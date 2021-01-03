@@ -16,8 +16,8 @@ export function errDb(e, res, originalUrl) {
   let status;
   let message;
   if (e.code === 'ECONNREFUSED') {
-    status = 500;
-    message = 'Broken Database connection';
+    status = 503;
+    message = 'Service Unavai­lable - Broken Database connection';
   } else {
     status = 500;
     message = 'Server Internal Error';
@@ -31,8 +31,17 @@ export function errDb(e, res, originalUrl) {
   })
 }
 
-export function hierarchy(args) {
-  const names = ['tasks', 'lists', 'groups'];
+export function err(status, message, res, originalUrl) {
+  res.status(status);
+  res.send({
+    error: {
+      message: message,
+      url: originalUrl
+    }
+  })
+}
+
+export function hierarchy(args, names) {
   let obj = {};
   for (let i = 0; i < args.length; i++) {
     const helper = {};
@@ -40,19 +49,22 @@ export function hierarchy(args) {
       arg => {
         const id = arg['parent_id'];
         delete arg['parent_id'];
-        if (!helper[id] && i !== args.length -1) {
+        if (!helper[id] && i !== args.length - 1) {
           helper[id] = {};
         }
-        if (i === 0) {
+        if (i === 0) { // last children nodes
           helper[id][arg.id] = arg;
-        } else if (i === args.length -1) {
-          helper[arg.id] = { ...arg, [names[i-1]]: obj[arg.id] };
-        } else {
-          helper[id][arg.id] = { ...arg, [names[i-1]]: obj[arg.id] };
+        } else if (i === args.length - 1) { // root node
+          helper[arg.id] = { ...arg, [getName(i)]: obj[arg.id] };
+        } else { // nodes between
+          helper[id][arg.id] = { ...arg, [getName(i)]: obj[arg.id] };
         }
       }
     )
     obj = { ...helper };
   }
   return obj;
+  function getName(id) {
+    return (!names) ? 'children' : names[id - 1];
+  }
 }

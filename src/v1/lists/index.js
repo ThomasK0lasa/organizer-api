@@ -2,14 +2,14 @@ import express from "express";
 import { db, errDb, err } from "../_utils";
 const router = express.Router();
 
-// v1/tasks
+// v1/lists
 
 router.get('/', async (req, res) => {
   try {
     const connection = await db();
     const [rows] = await connection.query(`
-      SELECT id, content, done, created_on, modified_on, sort, parent_id
-      FROM tasks
+      SELECT id, name, sort, parent_id, deleted
+      FROM lists
       WHERE deleted IS NULL OR deleted = 0
     `);
     res.json(rows);
@@ -19,37 +19,34 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { content, parent_id } = req.body;
-  const created_on = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  if (content && parent_id) {
+  const { name = '', parent_id } = req.body;
+  if (parent_id) {
     try {
       const connection = await db();
       const [response] = await connection.execute(
-        `INSERT INTO tasks (content, done, created_on, parent_id)
-        VALUES (?, 0, ?, ?)`
-        , [content, created_on, parent_id]);
+        `INSERT INTO lists (name, parent_id)
+        VALUES (?, ?)`
+        , [name, parent_id]);
       res.json(response);
     } catch (e) {
       errDb(e, res, req.originalUrl);
     }
   } else {
-    err(400, 'Missing parameter or parameters: [content, parent_id]', res, req.originalUrl);
+    err(400, 'Missing parameter or parameters: [parent_id]', res, req.originalUrl);
   }
 })
 
 router.put('/:id', async (req, res) => {
-  const { content, done, created_on, sort = null, parent_id, deleted = null} = req.body;
+  const { name = '', sort = null, parent_id, deleted = null } = req.body;
   const { id } = req.params
-  const modified_on = new Date().toISOString().slice(0, 19).replace('T', ' ');
   try {
     const connection = await db();
     const [response] = await connection.execute(`
-      UPDATE tasks SET
-      content = ?, done = ?,
-      created_on = ?, modified_on = ?,
-      sort = ?, parent_id = ?, deleted = ?
+      UPDATE lists SET
+      name = ?, sort = ?,
+      parent_id = ?, deleted = ?
       WHERE id = ?
-      `, [content, done, created_on, modified_on, sort, parent_id, deleted, id]);
+      `, [name, sort, parent_id, deleted, id]);
     res.json(response);
   } catch (e) {
     errDb(e, res, req.originalUrl);
@@ -58,12 +55,15 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const { id } = req.params
-  const modified_on = new Date().toISOString().slice(0, 19).replace('T', ' ');
   try {
     const connection = await db();
+    const [ tasks ] = await connection.execute(`
+      UPDATE tasks SET deleted = 1 WHERE parent_id = ?
+      `, [id]);
     const [response] = await connection.execute(`
-      UPDATE tasks SET modified_on = ?, deleted = 1 WHERE id = ?
-      `, [ modified_on, id]);
+      UPDATE lists SET deleted = 1 WHERE id = ?
+      `, [id]);
+    response.affectedTasks = tasks.affectedRows;
     res.json(response);
   } catch (e) {
     errDb(e, res, req.originalUrl);
